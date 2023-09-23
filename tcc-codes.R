@@ -273,115 +273,6 @@ cvd_data %>%
   geom_line(aes(x = numDays, y = fitted, color = modelo), size = 1)+
   labs(title = 'Recife - PE',  x = "Número de dias a partir do primeiro caso", y = "Casos acumulados de COVID-19") 
 
-
-# Análise de Resíduo
-
-calculate_tests <- function(fit_model, data) {
-  residuals <- residuals(fit_model)
-  
-  if (length(unique(residuals)) == 1) {
-    return(data.frame(Shapiro = NA, GQ = NA))
-  }
-  
-  shapiro_p_value <- shapiro.test(residuals)$p.value
-  gq_p_value <- gqtest(fit_model, fraction = 0.5)$p.value
-  
-  return(data.frame(Shapiro = shapiro_p_value, GQ = gq_p_value))
-}
-
-# Aplicar a função para cada município
-results_log <- regressions %>% 
-  rowwise() %>% 
-  do(calculate_tests(.$fit_log, .$data))
-
-results_linear <- regressions %>% 
-  rowwise() %>% 
-  do(calculate_tests(.$fit_linear, .$data))
-
-results_loglog <- regressions %>% 
-  rowwise() %>% 
-  do(calculate_tests(.$fit_loglog, .$data))
-
-# Histograma dos p-valores de Shapiro-Wilk
-par(mfrow = c(1,3))
-
-hist(results_linear$Shapiro, main="Linear", xlab="p valor", ylab = "Frequência", breaks=50)
-abline(v = 0.05, col = "red")
-
-hist(results_log$Shapiro, main="Exponencial", xlab="p valor", ylab = "Frequência", breaks=50)
-abline(v = 0.05, col = "red")
-
-hist(results_loglog$Shapiro, main="Gompertz", xlab="p valor", ylab = "Frequência", breaks=50)
-abline(v = 0.05, col = "red")
-
-# Histograma dos p-valores de Goldfeld-Quandt
-par(mfrow = c(1,3))
-
-hist(results_linear$GQ, main="Linear", xlab="p valor", ylab = "Frequência", breaks=50)
-abline(v = 0.05, col = "red")
-
-hist(results_log$GQ, main="Exponencial", xlab="p valor", ylab = "Frequência", breaks=50)
-abline(v = 0.05, col = "red")
-
-hist(results_loglog$GQ, main="Gompertz", xlab="p valor", ylab = "Frequência", breaks=50)
-abline(v = 0.05, col = "red")
-
-
-# Residuals medio
-
-avg_residuals_linear <- regressions %>%
-  unnest(augmented_linear) %>%
-  group_by(numDays) %>%
-  summarise(mean_residual = mean(.resid))
-
-avg_residuals_log <- regressions %>%
-  unnest(augmented_log) %>%
-  group_by(numDays) %>%
-  summarise(mean_residual = mean(.resid))
-
-avg_residuals_loglog <- regressions %>%
-  unnest(augmented_loglog) %>%
-  group_by(numDays) %>%
-  summarise(mean_residual = mean(.resid))
-
-par(mfrow = c(1,3))
-ggplot(avg_residuals_linear, aes(x = numDays, y = mean_residual)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE, color = "red") +
-  theme_minimal() +
-  labs(
-       x = "Número de Dias",
-       y = "Média dos Resíduos")
-
-ggplot(avg_residuals_log, aes(x = numDays, y = mean_residual)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE, color = "red") +
-  theme_minimal() +
-  labs(
-    x = "Número de Dias",
-    y = "Média dos Resíduos")
-
-ggplot(avg_residuals_loglog, aes(x = numDays, y = mean_residual)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE, color = "red") +
-  theme_minimal() +
-  labs(
-    x = "Número de Dias",
-    y = "Média dos Resíduos")
-
-par(mfrow = c(1,3))
-qqnorm(avg_residuals_linear$mean_residual, xlab = "Quantis teóricos da distribuição normal", 
-       ylab = "Quantis observados da amostra", main = "")
-qqline(avg_residuals_linear$mean_residual)
-
-qqnorm(avg_residuals_log$mean_residual, xlab = "Quantis teóricos da distribuição normal", 
-       ylab = "Quantis observados da amostra", main = "")
-qqline(avg_residuals_log$mean_residual)
-
-qqnorm(avg_residuals_loglog$mean_residual, xlab = "Quantis teóricos da distribuição normal", 
-       ylab = "Quantis observados da amostra", main = "")
-qqline(avg_residuals_loglog$mean_residual)
-
 # Clustering
 
 vazios = cvd_window %>% filter(Range == 0) %>% dplyr::select(codmun) %>% mutate(vazio = 1) %>% distinct()
@@ -389,17 +280,28 @@ vazios = cvd_window %>% filter(Range == 0) %>% dplyr::select(codmun) %>% mutate(
 clusterization = regressions %>% 
   ungroup() %>% 
   
-  unnest(glanced_linear) %>% 
-  dplyr::select(rsquared_linear = r.squared, pvalue_linear = p.value, glanced_log, glanced_loglog, codmun) %>% 
+  unnest(glanced_linear) %>%
+  dplyr::select(rsquared_linear = r.squared, pvalue_linear = p.value, glanced_log, glanced_loglog, tidied_linear, tidied_log, tidied_loglog, codmun) %>% 
+  unnest(tidied_linear) %>%
+  filter(term == "numDays") %>%
+  dplyr::select(rsquared_linear, pvalue_linear, estimate_linear = estimate, glanced_log, glanced_loglog, tidied_log, tidied_loglog, codmun) %>% 
   
   unnest(glanced_log) %>%
-  dplyr::select(rsquared_linear, pvalue_linear, rsquared_log = r.squared,  pvalue_log = p.value, glanced_loglog, codmun) %>% 
+  dplyr::select(rsquared_linear, pvalue_linear, estimate_linear, rsquared_log = r.squared,  pvalue_log = p.value, glanced_loglog, tidied_log, tidied_loglog, codmun) %>% 
+  unnest(tidied_log) %>%
+  filter(term == "numDays") %>%
+  dplyr::select(rsquared_linear, pvalue_linear, estimate_linear, rsquared_log, pvalue_log, estimate_log = estimate, glanced_loglog, tidied_loglog, codmun) %>% 
   
   unnest(glanced_loglog) %>%
-  dplyr::select(rsquared_linear, pvalue_linear, rsquared_log, pvalue_log, 
-         rsquared_loglog = r.squared, pvalue_loglog = p.value, codmun)
+  dplyr::select(rsquared_linear, pvalue_linear, estimate_linear, rsquared_log, pvalue_log, estimate_log, 
+                rsquared_loglog = r.squared, pvalue_loglog = p.value, tidied_loglog, codmun) %>%
+  unnest(tidied_loglog) %>%
+  filter(term == "numDays") %>%
+  dplyr::select(rsquared_linear, pvalue_linear, estimate_linear, rsquared_log, pvalue_log, estimate_log, 
+                  rsquared_loglog, pvalue_loglog, estimate_loglog = estimate, codmun)
 
 ## Distribuição dos municipios por p-valor
+
 
 clusterization_distrib <- clusterization %>%
   left_join(vazios, join_by(codmun == codmun)) %>%
@@ -409,9 +311,9 @@ clusterization_distrib <- clusterization %>%
     rsquared_loglog = case_when(vazio == 1 ~ 0, TRUE ~ rsquared_loglog))
 
 clusterization_distrib  %>% mutate(
-  pvalue_linear = case_when(vazio == 1 ~ 1, pvalue_linear < 0.05 ~ 1, pvalue_linear >= 0.05 ~ 0),
-  pvalue_log = case_when(vazio == 1 ~ 1, pvalue_log < 0.05 ~ 1, pvalue_log >= 0.05 ~ 0),
-  pvalue_loglog = case_when(vazio == 1 ~ 1, pvalue_loglog < 0.05 ~ 1, pvalue_loglog >= 0.05 ~ 0)) %>%
+  pvalue_linear = case_when(vazio == 1 ~ 0, pvalue_linear < 0.05 ~ 1, pvalue_linear >= 0.05 ~ 0),
+  pvalue_log = case_when(vazio == 1 ~ 0, pvalue_log < 0.05 ~ 1, pvalue_log >= 0.05 ~ 0),
+  pvalue_loglog = case_when(vazio == 1 ~ 0, pvalue_loglog < 0.05 ~ 1, pvalue_loglog >= 0.05 ~ 0)) %>%
   group_by(pvalue_linear,pvalue_log, pvalue_loglog) %>% count
 
 ## Manipulações e ajustes
@@ -419,24 +321,25 @@ clusterization_distrib  %>% mutate(
 clusterization_test <- clusterization %>%
   left_join(vazios, join_by(codmun == codmun)) %>%
   mutate(
-    rsquared_linear = case_when(vazio == 1 ~ 0, TRUE ~ rsquared_linear),
-    rsquared_log = case_when(vazio == 1 ~ 0, TRUE ~ rsquared_log),
-    rsquared_loglog = case_when(vazio == 1 ~ 0, TRUE ~ rsquared_loglog))  %>%
-  mutate(
-    pvalue_linear = case_when(vazio == 1 ~ 1, pvalue_linear < 0.05 ~ 1, pvalue_linear >= 0.05 ~ 0),
-    pvalue_log = case_when(vazio == 1 ~ 1, pvalue_log < 0.05 ~ 1, pvalue_log >= 0.05 ~ 0),
-    pvalue_loglog = case_when(vazio == 1 ~ 1, pvalue_loglog < 0.05 ~ 1, pvalue_loglog >= 0.05 ~ 0)) %>%
+    pvalue_linear = case_when(vazio == 1 ~ 0, pvalue_linear < 0.05 ~ 1, pvalue_linear >= 0.05 ~ 0),
+    pvalue_log = case_when(vazio == 1 ~ 0, pvalue_log < 0.05 ~ 1, pvalue_log >= 0.05 ~ 0),
+    pvalue_loglog = case_when(vazio == 1 ~ 0, pvalue_loglog < 0.05 ~ 1, pvalue_loglog >= 0.05 ~ 0)) %>%
   mutate(
     rsquared_linear = case_when(pvalue_linear < 0.05 ~ 0, TRUE ~ rsquared_linear),
     rsquared_log = case_when(pvalue_log < 0.05 ~ 0, TRUE ~ rsquared_log),
-    rsquared_loglog = case_when(pvalue_loglog < 0.05 ~ 0, TRUE ~ rsquared_loglog)) %>%
-    dplyr::select(rsquared_linear, rsquared_log, rsquared_loglog, codmun)
+    rsquared_loglog = case_when(pvalue_loglog < 0.05 ~ 0, TRUE ~ rsquared_loglog),
+    estimate_linear = case_when(pvalue_linear < 0.05 ~ 0, TRUE ~ estimate_linear),
+    estimate_log = case_when(pvalue_log < 0.05 ~ 0, TRUE ~ estimate_log),
+    estimate_loglog = case_when(pvalue_loglog < 0.05 ~ 0, TRUE ~ estimate_loglog)) %>%
+    dplyr::select(rsquared_linear, rsquared_log, rsquared_loglog, estimate_linear, estimate_log, estimate_loglog, codmun)
 
-clusterization_test$vazio = NULL
 
-clusterization_final = clusterization_test %>% column_to_rownames(var = "codmun")
+
+clusterization_final = clusterization_test %>% column_to_rownames(var = "codmun") %>% dplyr::select(rsquared_linear, rsquared_log, rsquared_loglog)
+
 
 summary(clusterization_final)
+
 
 # Metódo para definição dos tamanhos de clusters
 
@@ -554,7 +457,7 @@ fviz_nbclust(nb)
 
 # K-means
 
-set.seed(16)
+set.seed(10)
 km.res <- kmeans(clusterization_final, 3, nstart = 100, iter.max = 100)
 
 # Biplot PCA
@@ -586,3 +489,57 @@ clusters %>% group_by(cluster) %>% summarise(median(densidade), median(cnes_per_
 clusters %>% group_by(cluster) %>% count() %>% print()
 clusters %>% group_by(cluster, regiao) %>% count() %>% arrange(cluster, -n) %>% print()
 clusters %>% group_by(cluster, capitais) %>% count() %>% arrange(cluster, -n) %>% print()
+
+#####################
+# Clusterization -  \beta_1
+
+clusterization_final = clusterization_test %>% column_to_rownames(var = "codmun") %>% dplyr::select(estimate_linear, estimate_log, estimate_loglog)
+clusterization_scale = clusterization_final %>% scale()
+
+
+summary(clusterization_final)
+summary(clusterization_scale)
+
+# NbClust
+
+nb <- NbClust(clusterization_final, distance = "euclidean", min.nc = 2,
+              max.nc = 6, method = "kmeans")
+
+fviz_nbclust(nb)
+
+# K-means
+
+set.seed(10)
+km.res <- kmeans(clusterization_scale, 4, nstart = 100, iter.max = 100)
+
+# Biplot PCA
+
+fviz_cluster(        km.res,
+                     data=clusterization_scale,
+                     stand = FALSE,
+                     show.clust.cent = FALSE,
+                     geom = 'point',
+                     title = ''
+)
+
+# Análise dos clusters
+
+agg = clusterization_test
+agg$codmun = NULL
+aggregate(agg, by=list(cluster=km.res$cluster), median)
+aggregate(agg, by=list(cluster=km.res$cluster), mean)
+
+clusters = regressions %>% ungroup() %>% 
+  inner_join(basic_infos, join_by(codmun == codmun)) %>%
+  mutate(cluster = km.res$cluster)
+
+
+clusters %>% group_by(cluster) %>% summarise(mean(densidade), mean(cnes_per_pop), mean(prof_per_pop))
+clusters %>% group_by(cluster) %>% summarise(median(densidade), median(cnes_per_pop), median(prof_per_pop))
+
+
+clusters %>% group_by(cluster) %>% count() %>% print()
+clusters %>% group_by(cluster, regiao) %>% count() %>% arrange(cluster, -n) %>% print()
+clusters %>% group_by(cluster, capitais) %>% count() %>% arrange(cluster, -n) %>% print()
+
+list = clusters %>% filter(cluster == 3) %>% dplyr::select(estado.x,municipio.x) %>% distinct()
